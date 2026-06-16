@@ -1,1 +1,694 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Analyzer & PDF Landscape Exporter</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- html2pdf.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    /* ドラッグ中の視覚効果用 */
+    .dragging {
+      opacity: 0.5;
+      border: 2px dashed #3b82f6;
+    }
+    .drag-over {
+      border: 2px solid #3b82f6;
+      transform: scale(1.02);
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
 
+  <div class="container mx-auto px-4 py-8 max-w-5xl">
+    <!-- ヘッダー -->
+    <header class="mb-8 text-center md:text-left md:flex md:items-center md:justify-between border-b border-slate-800 pb-6">
+      <div>
+        <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent flex items-center justify-center md:justify-start gap-2">
+          <i data-lucide="layout-dashboard"></i> Screen Analyzer (A4横 PDF対応)
+        </h1>
+        <p class="text-slate-400 mt-2 text-sm">画像をアップロード・並び替えし、前提条件を反映した分析結果を「A4横サイズ」の1ページ1要素でPDFエクスポートします。</p>
+      </div>
+      
+      <!-- API状態表示 / 手動設定 -->
+      <div class="mt-4 md:mt-0 bg-slate-800 p-3 rounded-lg border border-slate-700 text-xs flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="text-slate-300">Gemini 2.5 Flash API 有効</span>
+        </div>
+        <div class="flex gap-1">
+          <input type="password" id="customApiKey" placeholder="カスタムAPIキー (任意)" class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-300 w-44 focus:outline-none focus:border-blue-500">
+          <button id="saveApiKeyBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition">保存</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- コントロールパネル (前提条件設定、テイスト選択 ＆ 一括操作) -->
+    <section class="bg-slate-800 rounded-xl p-6 border border-slate-700 mb-8 shadow-xl">
+      <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-blue-400">
+        <i data-lucide="sliders"></i> 1. 設定と操作
+      </h2>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <!-- テイスト選択 -->
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-1.5">
+            <i data-lucide="palette" class="w-4 h-4"></i> 分析のテイストを選択
+          </label>
+          <div class="grid grid-cols-2 gap-2" id="tasteOptions">
+            <button data-taste="ui-ux" class="taste-btn active bg-blue-600 text-white border border-blue-500 py-2.5 px-3 rounded-lg text-xs font-medium transition hover:bg-blue-500 text-left flex items-center gap-2">
+              <i data-lucide="smartphone" class="w-4 h-4"></i> UI/UXデザイナー視点
+            </button>
+            <button data-taste="engineer" class="taste-btn bg-slate-700 text-slate-300 border border-slate-600 py-2.5 px-3 rounded-lg text-xs font-medium transition hover:bg-slate-600 text-left flex items-center gap-2">
+              <i data-lucide="code-2" class="w-4 h-4"></i> エンジニア視点
+            </button>
+            <button data-taste="marketer" class="taste-btn bg-slate-700 text-slate-300 border border-slate-600 py-2.5 px-3 rounded-lg text-xs font-medium transition hover:bg-slate-600 text-left flex items-center gap-2">
+              <i data-lucide="trending-up" class="w-4 h-4"></i> マーケター視点
+            </button>
+            <button data-taste="general" class="taste-btn bg-slate-700 text-slate-300 border border-slate-600 py-2.5 px-3 rounded-lg text-xs font-medium transition hover:bg-slate-600 text-left flex items-center gap-2">
+              <i data-lucide="users" class="w-4 h-4"></i> 一般ユーザー視点
+            </button>
+            <button data-taste="manual" class="taste-btn bg-slate-700 text-slate-300 border border-slate-600 py-2.5 px-3 rounded-lg text-xs font-medium transition hover:bg-slate-600 text-left flex items-center gap-2">
+              <i data-lucide="list-ordered" class="w-4 h-4 text-emerald-400"></i> 手順書向け (操作ガイド)
+            </button>
+            <button data-taste="spec" class="taste-btn bg-slate-700 text-slate-300 border border-slate-600 py-2.5 px-3 rounded-lg text-xs font-medium transition hover:bg-slate-600 text-left flex items-center gap-2">
+              <i data-lucide="book-open" class="w-4 h-4 text-yellow-400"></i> 説明書風 (機能解説)
+            </button>
+            <button data-taste="roast" class="taste-btn bg-slate-700 text-slate-300 border border-slate-600 py-2.5 px-3 rounded-lg text-xs font-medium transition hover:bg-slate-600 text-left flex items-center gap-2 col-span-2">
+              <i data-lucide="flame" class="w-4 h-4 text-orange-400"></i> ユーモアたっぷり辛口レビュー
+            </button>
+          </div>
+        </div>
+
+        <!-- 分析前提条件入力エリア -->
+        <div class="flex flex-col">
+          <label for="analysisCondition" class="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-1.5">
+            <i data-lucide="file-text" class="w-4 h-4"></i> 分析前提条件 (任意)
+          </label>
+          <textarea id="analysisCondition" rows="4" placeholder="例: 「ECサイトの購入フロー」「スマートフォン表示を想定」「ターゲット層はITリテラシーが低めのシニア層」など、AIに意識させたい条件を入力してください。" class="flex-1 w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-300 focus:outline-none focus:border-blue-500 placeholder-slate-500 resize-none"></textarea>
+          <p class="text-[11px] text-slate-400 mt-1.5">※設定した前提条件は、AIの分析指示に自動的に反映されます。</p>
+        </div>
+      </div>
+
+      <!-- アクションエリア -->
+      <div class="border-t border-slate-700/50 pt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <p class="text-xs text-slate-400">
+          設定を確認後、一括分析を開始してください。完了した画像はPDF(A4横)にまとめられます。
+        </p>
+        <div class="flex gap-3 min-w-[320px]">
+          <button id="analyzeAllBtn" class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-3 px-4 rounded-lg shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+            <i data-lucide="sparkles" class="w-4 h-4"></i> 全てをAI分析
+          </button>
+          <button id="downloadPdfBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-4 rounded-lg shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            <i data-lucide="file-down" class="w-4 h-4"></i> PDF(A4横)を保存
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- アップロードエリア -->
+    <div id="dropZone" class="border-2 border-dashed border-slate-600 hover:border-blue-500 bg-slate-800/50 rounded-xl p-8 text-center cursor-pointer mb-8 transition-colors">
+      <input type="file" id="fileInput" class="hidden" multiple accept="image/*">
+      <div class="flex flex-col items-center justify-center gap-3">
+        <div class="p-4 bg-slate-800 rounded-full text-blue-400 border border-slate-700">
+          <i data-lucide="upload-cloud" class="w-10 h-10"></i>
+        </div>
+        <p class="text-base font-semibold">クリックして画像を選択、またはドラッグ＆ドロップ</p>
+        <p class="text-xs text-slate-400">複数ファイルの同時アップロードに対応しています（PNG, JPEG, WebPなど）</p>
+      </div>
+    </div>
+
+    <!-- 画像一覧・分析結果コンテナ -->
+    <section class="mb-12">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold flex items-center gap-2">
+          <i data-lucide="image" class="text-blue-400"></i> アップロード済みの画像一覧
+          <span id="imageCount" class="text-sm bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full ml-1">0</span>
+        </h2>
+        <p class="text-xs text-slate-400 flex items-center gap-1">
+          <i data-lucide="move" class="w-3.5 h-3.5"></i> ドラッグして並び替えができます
+        </p>
+      </div>
+
+      <!-- 空状態プレースホルダー -->
+      <div id="emptyState" class="bg-slate-800/30 rounded-xl p-12 text-center border border-slate-800">
+        <p class="text-slate-500">画像がアップロードされていません。上のエリアから追加してください。</p>
+      </div>
+
+      <!-- 画像カードリスト -->
+      <div id="imageList" class="grid grid-cols-1 gap-6"></div>
+    </section>
+  </div>
+
+  <!-- PDF出力用の一時的な隠しコンテナ (A4横型: 1040px幅にマージンを持たせて、ぴったり1枚に収める) -->
+  <div id="pdfExportWrapper" class="hidden bg-slate-100 p-0 m-0" style="width: 1040px; font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;">
+    <div id="pdfPagesArea"></div>
+  </div>
+
+  <!-- トーストメッセージ -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 border border-slate-700 text-slate-100 px-4 py-3 rounded-lg shadow-2xl flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+    <span id="toastIcon"></span>
+    <span id="toastMessage" class="text-sm font-medium"></span>
+  </div>
+
+  <script>
+    // Lucideアイコンの初期化
+    lucide.createIcons();
+
+    // グローバル状態
+    let imageItems = []; // { id, file, base64, analysisResult, status: 'idle'|'analyzing'|'completed'|'failed' }
+    let selectedTaste = 'ui-ux';
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    let geminiApiKey = ""; // 空文字で初期化（環境自動キー優先）
+
+    // テイスト定義（各画像の文字数がPDFの1ページにぴったり収まる長さにプロンプト側で制御）
+    const tastes = {
+      'ui-ux': {
+        name: 'UI/UXデザイナー視点',
+        prompt: 'プロのUI/UXデザイナーとして、この画面（スクリーンショット）のデザイン、レイアウト、アクセシビリティ、直感性について分析してください。改善すべき点や優れている点を具体的に指摘してください。※PDFのA4横1ページに収めるため、簡潔かつ要点を得た文章（全体で350文字以内）で出力してください。フォーマットは「### ■総評」「### ■良い点」「### ■改善提案」の3項目で構成してください。'
+      },
+      'engineer': {
+        name: 'フロントエンドエンジニア視点',
+        prompt: '熟練のフロントエンドエンジニアとして、この画面のデザイン・構成を分析してください。コンポーネントの切り出し、実装難易度、レスポンシブ時の懸念点などを指摘してください。※PDFのA4横1ページに収めるため、簡潔かつ要点を得た文章（全体で350文字以内）で出力してください。フォーマットは「### ■マークアップ的評価」「### ■実装における懸念」「### ■推奨コンポーネント」の3項目で構成してください。'
+      },
+      'marketer': {
+        name: 'マーケター視点',
+        prompt: 'デジタルマーケターとして、この画面を分析してください。コンバージョン（CV）導線、CTAの視認性、情報のわかりやすさ、ユーザー行動への訴求力を評価してください。※PDFのA4横1ページに収めるため、簡潔かつ要点を得た文章（全体で350文字以内）で出力してください。フォーマットは「### ■導線・訴求評価」「### ■離脱懸念ポイント」「### ■改善アクション案」の3項目で構成してください。'
+      },
+      'general': {
+        name: '一般ユーザー視点',
+        prompt: 'ITに詳しくない普通の一般ユーザーとして、この画面の第一印象や使いやすさを率早にレビューしてください。※PDFのA4横1ページに収めるため、親しみやすい丁寧な表現（全体で350文字以内）で出力してください。フォーマットは「### ■第一印象」「### ■使って感じる部分」「### ■こうなると嬉しい（要望）」の3項目で構成してください。'
+      },
+      'manual': {
+        name: '手順書向け (操作ガイド)',
+        prompt: '業務手順書（マニュアル）作成の専門家として、この画面からユーザーが実行すべき操作ステップや手続きの流れを客観的に解説してください。※PDFのA4横1ページに収めるため、無駄を削ぎ落とした分かりやすい文章（全体で350文字以内）で出力してください。フォーマットは「### ■この画面の主目的」「### ■操作手順ステップ」「### ■注意・確認事項」の3項目で構成してください。'
+      },
+      'spec': {
+        name: '説明書風 (機能解説)',
+        prompt: '製品取扱説明書やシステム仕様書のライターとして、この画面全体の構造や配置されている各パーツ・機能の一覧を分かりやすく客観的に定義・解説してください。※PDFのA4横1ページに収めるため、専門的かつ理解しやすい文章（全体で350文字以内）で出力してください。フォーマットは「### ■全体レイアウト構成」「### ■主要な機能・項目」「### ■操作ボタン・表示仕様」の3項目で構成してください。'
+      },
+      'roast': {
+        name: 'ユーモアたっぷり辛口レビュー',
+        prompt: 'ユーモアと愛情のある毒舌コメンテーターとして、この画面に面白おかしくツッコミを入れてレビューしてください。ただし最後には愛のあるフォローを必ず含めてください。※PDFのA4横1ページに収めるため、簡潔な表現（全体で350文字以内）で出力してください。フォーマットは「### ■辛口レビュー（ツッコミ）」「### ■ここがちょっと不思議」「### ■でも実はここが好き」の3項目で構成してください。'
+      }
+    };
+
+    // DOM要素
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const imageList = document.getElementById('imageList');
+    const emptyState = document.getElementById('emptyState');
+    const imageCount = document.getElementById('imageCount');
+    const analyzeAllBtn = document.getElementById('analyzeAllBtn');
+    const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+    const customApiKeyInput = document.getElementById('customApiKey');
+    const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+    const analysisConditionInput = document.getElementById('analysisCondition');
+
+    // APIキー保存
+    saveApiKeyBtn.addEventListener('click', () => {
+      geminiApiKey = customApiKeyInput.value.trim();
+      showToast('APIキーを適用しました（空欄の場合は自動キーを使用します）', 'check-circle', 'text-emerald-400');
+    });
+
+    // テイスト選択イベント
+    document.querySelectorAll('.taste-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.taste-btn').forEach(btn => {
+          btn.classList.remove('active', 'bg-blue-600', 'text-white', 'border-blue-500');
+          btn.classList.add('bg-slate-700', 'text-slate-300', 'border-slate-600');
+        });
+        button.classList.add('active', 'bg-blue-600', 'text-white', 'border-blue-500');
+        button.classList.remove('bg-slate-700', 'text-slate-300', 'border-slate-600');
+        selectedTaste = button.dataset.taste;
+        showToast(`分析テイストを「${tastes[selectedTaste].name}」に変更しました`, 'palette', 'text-blue-400');
+      });
+    });
+
+    // ファイルアップロード関連
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-blue-500', 'bg-slate-800/80');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-blue-500', 'bg-slate-800/80');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-blue-500', 'bg-slate-800/80');
+      handleFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+    });
+
+    function handleFiles(files) {
+      const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+      if (validFiles.length === 0) {
+        showToast('画像ファイルを選択してください', 'alert-circle', 'text-rose-400');
+        return;
+      }
+
+      validFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const newItem = {
+            id: 'img-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            file: file,
+            base64: e.target.result,
+            analysisResult: '',
+            status: 'idle'
+          };
+          imageItems.push(newItem);
+          renderList();
+        };
+        reader.readAsDataURL(file);
+      });
+      showToast(`${validFiles.length}枚の画像を追加しました`, 'plus-circle', 'text-blue-400');
+    }
+
+    // UIリストの描画
+    function renderList() {
+      if (imageItems.length === 0) {
+        emptyState.classList.remove('hidden');
+        imageList.innerHTML = '';
+        imageCount.textContent = '0';
+        downloadPdfBtn.disabled = true;
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      imageCount.textContent = imageItems.length;
+
+      const existingCards = {};
+      Array.from(imageList.children).forEach(child => {
+        existingCards[child.dataset.id] = child;
+      });
+
+      imageList.innerHTML = '';
+
+      imageItems.forEach((item, index) => {
+        let card = existingCards[item.id];
+        
+        if (!card) {
+          card = document.createElement('div');
+          card.className = 'bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-lg flex flex-col lg:flex-row gap-6 transition duration-200 cursor-grab active:cursor-grabbing relative overflow-hidden';
+          card.setAttribute('draggable', 'true');
+          card.dataset.id = item.id;
+          setupDragAndDropEvents(card);
+        }
+
+        card.innerHTML = `
+          <!-- ドラッグ連番 -->
+          <div class="absolute top-3 left-3 bg-slate-900/80 px-2.5 py-1 rounded-md text-xs font-bold text-slate-300 flex items-center gap-1.5 border border-slate-700">
+            <i data-lucide="grip-vertical" class="w-3.5 h-3.5 text-slate-500 cursor-move"></i>
+            <span>#${index + 1}</span>
+          </div>
+
+          <!-- 削除ボタン -->
+          <button onclick="deleteItem('${item.id}')" class="absolute top-3 right-3 text-slate-500 hover:text-rose-400 p-1.5 hover:bg-slate-700/50 rounded-lg transition" title="削除">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+
+          <!-- プレビュー表示 -->
+          <div class="lg:w-1/3 flex items-center justify-center bg-slate-950 rounded-lg overflow-hidden border border-slate-700/50 min-h-[180px] max-h-[260px] mt-6 lg:mt-0">
+            <img src="${item.base64}" alt="プレビュー" class="object-contain w-full h-full max-h-[240px]">
+          </div>
+
+          <!-- 分析結果・コントロール -->
+          <div class="flex-1 flex flex-col justify-between">
+            <div>
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/50 pb-3 mb-3">
+                <h3 class="font-semibold text-slate-200 truncate max-w-xs" title="${item.file.name}">${item.file.name}</h3>
+                <span class="text-xs text-slate-400">${(item.file.size / 1024).toFixed(1)} KB</span>
+              </div>
+
+              <!-- 結果出力エリア -->
+              <div class="text-sm min-h-[110px] max-h-[220px] bg-slate-900/60 p-4 rounded-lg border border-slate-700/40 text-slate-300 overflow-y-auto leading-relaxed whitespace-pre-wrap">
+                ${renderStatusContent(item)}
+              </div>
+            </div>
+
+            <!-- フッター -->
+            <div class="mt-4 flex items-center justify-between gap-4">
+              <div class="flex items-center gap-1.5 text-xs text-slate-400">
+                ${item.status === 'completed' ? `<span class="inline-flex items-center gap-1 text-emerald-400 font-semibold"><i data-lucide="check-circle-2" class="w-4 h-4"></i> 分析完了</span>` : ''}
+                ${item.status === 'analyzing' ? `<span class="inline-flex items-center gap-1.5 text-blue-400 font-semibold"><i data-lucide="loader" class="w-4 h-4 animate-spin"></i> AI分析中...</span>` : ''}
+                ${item.status === 'failed' ? `<span class="inline-flex items-center gap-1 text-rose-400 font-semibold"><i data-lucide="alert-triangle" class="w-4 h-4"></i> 分析失敗</span>` : ''}
+                ${item.status === 'idle' ? `<span class="inline-flex items-center gap-1 text-slate-500"><i data-lucide="clock" class="w-4 h-4"></i> 未分析</span>` : ''}
+              </div>
+              <button onclick="analyzeSingle('${item.id}')" class="bg-slate-700 hover:bg-slate-600 hover:text-white text-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition" ${item.status === 'analyzing' ? 'disabled' : ''}>
+                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-blue-400"></i> ${item.status === 'completed' ? '再分析' : 'この画像を分析'}
+              </button>
+            </div>
+          </div>
+        `;
+
+        imageList.appendChild(card);
+      });
+
+      lucide.createIcons();
+      const hasCompleted = imageItems.some(item => item.status === 'completed');
+      downloadPdfBtn.disabled = !hasCompleted;
+    }
+
+    function renderStatusContent(item) {
+      if (item.status === 'analyzing') {
+        return `
+          <div class="flex flex-col items-center justify-center py-6 gap-3">
+            <div class="w-7 h-7 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-slate-400 text-xs animate-pulse">前提条件を踏まえて、画面構成を要約分析しています...</p>
+          </div>
+        `;
+      }
+      if (item.status === 'failed') {
+        return `<p class="text-rose-400 flex items-center gap-1"><i data-lucide="alert-circle" class="w-4 h-4"></i> 分析エラー。キー確認、またはもう一度お試しください。</p>`;
+      }
+      if (item.status === 'completed' && item.analysisResult) {
+        return formatMarkdownLikeText(item.analysisResult);
+      }
+      return `<p class="text-slate-500 italic text-center py-6">「この画像を分析」ボタンを押すと結果が表示されます。</p>`;
+    }
+
+    function formatMarkdownLikeText(text) {
+      let html = text
+        .replace(/### (.*)/g, '<h4 class="font-bold text-blue-400 mt-2 mb-1 text-sm">$1</h4>')
+        .replace(/## (.*)/g, '<h3 class="font-bold text-blue-300 mt-3 mb-1.5 text-base border-b border-slate-700 pb-0.5">$1</h3>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+        .replace(/^- (.*)/gm, '<li class="ml-4 list-disc text-slate-300 text-xs">$1</li>');
+      return html;
+    }
+
+    window.deleteItem = function(id) {
+      imageItems = imageItems.filter(item => item.id !== id);
+      renderList();
+      showToast('画像を削除しました', 'trash-2', 'text-slate-400');
+    };
+
+    /* ドラッグ＆ドロップ並び替え処理 */
+    let dragSourceEl = null;
+    function setupDragAndDropEvents(el) {
+      el.addEventListener('dragstart', function(e) {
+        dragSourceEl = this;
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', this.dataset.id);
+      });
+
+      el.addEventListener('dragover', function(e) {
+        if (e.preventDefault) e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+      });
+
+      el.addEventListener('dragenter', function() {
+        if (this !== dragSourceEl) this.classList.add('drag-over');
+      });
+
+      el.addEventListener('dragleave', function() {
+        this.classList.remove('drag-over');
+      });
+
+      el.addEventListener('drop', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+
+        if (dragSourceEl !== this) {
+          const draggedId = e.dataTransfer.getData('text/plain');
+          const targetId = this.dataset.id;
+
+          const draggedIndex = imageItems.findIndex(item => item.id === draggedId);
+          const targetIndex = imageItems.findIndex(item => item.id === targetId);
+
+          if (draggedIndex !== -1 && targetIndex !== -1) {
+            const [removed] = imageItems.splice(draggedIndex, 1);
+            imageItems.splice(targetIndex, 0, removed);
+            renderList();
+            showToast('順番を入れ替えました', 'move', 'text-blue-400');
+          }
+        }
+        return false;
+      });
+
+      el.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        document.querySelectorAll('#imageList > div').forEach(card => card.classList.remove('drag-over'));
+      });
+    }
+
+    /* Gemini API 画像分析処理 */
+    async function callGeminiVisionAPI(base64ImageWithHeader, promptText) {
+      const base64Parts = base64ImageWithHeader.split(',');
+      const mimeType = base64Parts[0].match(/:(.*?);/)[1];
+      const base64Data = base64Parts[1];
+
+      const apiKey = geminiApiKey || ""; 
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+      const payload = {
+        contents: [
+          {
+            parts: [
+              { text: promptText },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: base64Data
+                }
+              }
+            ]
+          }
+        ]
+      };
+
+      const maxRetries = 5;
+      let delay = 1000;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const result = await response.json();
+          const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+          
+          if (text) return text;
+          throw new Error("応答のパースに失敗しました。");
+        } catch (error) {
+          if (attempt === maxRetries) throw error;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2;
+        }
+      }
+    }
+
+    window.analyzeSingle = async function(id) {
+      const itemIndex = imageItems.findIndex(item => item.id === id);
+      if (itemIndex === -1) return;
+
+      const item = imageItems[itemIndex];
+      item.status = 'analyzing';
+      renderList();
+
+      // 基本プロンプト
+      let finalPrompt = tastes[selectedTaste].prompt;
+
+      // 前提条件がある場合、プロンプトの先頭に差し込み
+      const condition = analysisConditionInput.value.trim();
+      if (condition) {
+        finalPrompt = `【分析前提条件（ここを強く意識してください）】\n${condition}\n\n上記の前提を踏まえた上で、以下指示に従ってください。\n\n${finalPrompt}`;
+      }
+
+      try {
+        const analysis = await callGeminiVisionAPI(item.base64, finalPrompt);
+        item.analysisResult = analysis;
+        item.status = 'completed';
+        showToast(`「${item.file.name}」の分析を完了しました`, 'check-circle', 'text-emerald-400');
+      } catch (error) {
+        console.error(error);
+        item.status = 'failed';
+        showToast('AI接続に失敗しました。時間をおいて再試行してください。', 'alert-circle', 'text-rose-400');
+      } finally {
+        renderList();
+      }
+    };
+
+    analyzeAllBtn.addEventListener('click', async () => {
+      if (imageItems.length === 0) {
+        showToast('分析する画像を追加してください', 'info', 'text-amber-400');
+        return;
+      }
+      showToast('一括分析を開始しました。順次呼び出します...', 'sparkles', 'text-indigo-400');
+      for (const item of imageItems) {
+        if (item.status === 'analyzing') continue;
+        await analyzeSingle(item.id);
+      }
+    });
+
+    /* ==========================================================================
+       A4横型（Landscape）を完全固定した美しい1枚/1画像構成のPDFエクスポート処理
+       ========================================================================== */
+    downloadPdfBtn.addEventListener('click', () => {
+      const completedItems = imageItems.filter(item => item.status === 'completed');
+      if (completedItems.length === 0) {
+        showToast('分析完了した画像がありません。先に分析を実行してください。', 'alert-circle', 'text-rose-400');
+        return;
+      }
+
+      showToast('A4横の配置で高品質PDFを作成しています...', 'loader', 'text-blue-400');
+
+      const wrapper = document.getElementById('pdfExportWrapper');
+      const pagesArea = document.getElementById('pdfPagesArea');
+      pagesArea.innerHTML = '';
+
+      const now = new Date();
+      const dateString = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // ユーザー設定の前提条件
+      const currentCondition = analysisConditionInput.value.trim() || "特になし";
+
+      completedItems.forEach((item, index) => {
+        // A4横ページコンテナ
+        const pageContainer = document.createElement('div');
+        
+        // CSSによる改ページ競合の完全防止設定
+        if (index > 0) {
+          pageContainer.style.pageBreakBefore = 'always';
+        } else {
+          pageContainer.style.pageBreakBefore = 'avoid';
+        }
+        pageContainer.style.pageBreakInside = 'avoid';
+        pageContainer.style.pageBreakAfter = 'avoid';
+
+        // コンテナスタイル (A4ヨコの規格比率に準じたサイズ)
+        pageContainer.style.width = '1040px';
+        pageContainer.style.maxHeight = '720px';
+        pageContainer.style.padding = '30px 40px';
+        pageContainer.style.boxSizing = 'border-box';
+        pageContainer.style.backgroundColor = '#ffffff';
+        pageContainer.style.display = 'flex';
+        pageContainer.style.flexDirection = 'column';
+        pageContainer.style.justifyContent = 'space-between';
+        pageContainer.style.overflow = 'hidden';
+
+        // 簡素化されたMarkdown→HTML変換
+        const formattedText = item.analysisResult
+          .replace(/### (.*)/g, '<h4 style="font-weight: bold; color: #1e3a8a; font-size: 13.5px; margin-top: 8px; margin-bottom: 4px;">$1</h4>')
+          .replace(/## (.*)/g, '<h3 style="font-weight: bold; color: #0f172a; font-size: 15px; margin-top: 10px; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">$1</h3>')
+          .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #0f172a; font-weight: bold;">$1</strong>')
+          .replace(/^- (.*)/gm, '<li style="margin-left: 14px; list-style-type: disc; color: #334155; font-size: 11.5px; margin-bottom: 2px;">$1</li>');
+
+        pageContainer.innerHTML = `
+          <!-- A4ヨコ：ヘッダー -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 15px;">
+            <div>
+              <h1 style="font-size: 19px; font-weight: bold; color: #1e293b; margin: 0; line-height: 1;">画面分析レポート</h1>
+              <p style="font-size: 10.5px; color: #64748b; margin: 4px 0 0 0;">分析テイスト: ${tastes[selectedTaste].name} &nbsp;|&nbsp; 生成日時: ${dateString}</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 11px; font-weight: bold; color: #2563eb; letter-spacing: 0.5px;">SCREEN ANALYZER</span>
+            </div>
+          </div>
+
+          <!-- A4ヨコ：メイン2カラム（左に画像・右に分析結果） -->
+          <div style="display: flex; gap: 25px; flex: 1; min-height: 0; overflow: hidden; align-items: stretch; margin-bottom: 10px;">
+            
+            <!-- 左カラム: 画像表示領域 -->
+            <div style="width: 420px; display: flex; flex-direction: column; justify-content: center; align-items: center; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; box-sizing: border-box;">
+              <div style="width: 100%; height: 380px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <img src="${item.base64}" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px;" alt="対象画面">
+              </div>
+              <div style="margin-top: 10px; text-align: center; width: 100%;">
+                <span style="display: inline-block; background-color: #dbeafe; color: #1e40af; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 9999px;">画像 #${index + 1}</span>
+                <p style="font-size: 10px; color: #64748b; margin: 4px 0 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.file.name}</p>
+              </div>
+            </div>
+
+            <!-- 右カラム: 分析結果テキスト領域 -->
+            <div style="flex: 1; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-start; height: 100%; overflow: hidden;">
+              <!-- 前提条件のチップ表示 -->
+              <div style="background-color: #f1f5f9; border-left: 3px solid #64748b; padding: 6px 10px; margin-bottom: 10px; border-radius: 0 4px 4px 0;">
+                <span style="font-size: 9px; font-weight: bold; color: #475569; display: block; text-transform: uppercase; margin-bottom: 1px;">分析前提条件</span>
+                <p style="font-size: 10px; color: #334155; margin: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${currentCondition}</p>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 10px;">
+                <span style="width: 6px; height: 6px; background-color: #2563eb; border-radius: 50%;"></span>
+                <span style="font-size: 10px; font-weight: bold; color: #475569; letter-spacing: 0.5px;">ANALYSIS REPORT</span>
+              </div>
+              
+              <div style="font-size: 11.5px; color: #334155; line-height: 1.55; overflow: hidden; height: auto;">
+                ${formattedText}
+              </div>
+            </div>
+
+          </div>
+
+          <!-- A4ヨコ：フッター -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 6px; font-size: 9px; color: #94a3b8;">
+            <span>※本報告書はAI技術により自動作成されたものです。</span>
+            <span>Page ${index + 1} of ${completedItems.length}</span>
+          </div>
+        `;
+        pagesArea.appendChild(pageContainer);
+      });
+
+      // 表示を一時的に解除してhtml2pdfに読ませる
+      wrapper.classList.remove('hidden');
+
+      const opt = {
+        margin:       0,
+        filename:     `screen_analysis_landscape_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak:    { mode: ['css', 'legacy'] }
+      };
+
+      // PDF生成実行
+      html2pdf().set(opt).from(wrapper).save().then(() => {
+        wrapper.classList.add('hidden');
+        showToast('PDF（A4横型）のダウンロードが完了しました！', 'check-circle', 'text-emerald-400');
+      }).catch(err => {
+        console.error("PDF Export Error:", err);
+        wrapper.classList.add('hidden');
+        showToast('PDFの生成中にエラーが発生しました。', 'alert-circle', 'text-rose-400');
+      });
+    });
+
+    /* トーストヘルパー */
+    let toastTimeout;
+    function showToast(message, iconName, iconColorClass = 'text-blue-400') {
+      const toast = document.getElementById('toast');
+      const toastMessage = document.getElementById('toastMessage');
+      const toastIcon = document.getElementById('toastIcon');
+
+      clearTimeout(toastTimeout);
+      toastIcon.innerHTML = `<i data-lucide="${iconName}" class="w-5 h-5 ${iconColorClass}"></i>`;
+      lucide.createIcons();
+      toastMessage.textContent = message;
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3500);
+    }
+  </script>
+</body>
+</html>
